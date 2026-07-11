@@ -1,29 +1,21 @@
-import { createServerClient } from "@supabase/ssr";
-import { cookies } from "next/headers";
+import { createClient } from "@/lib/utils/supabase/server";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
+  // ถ้าระบบหา next ไม่เจอ ให้เด้งไปที่ /dashboard โดยตรง
+  const next = searchParams.get("next") ?? "/dashboard";
 
   if (code) {
-    // ต้องใช้ await ในการเรียก cookies()
-    const cookieStore = await cookies(); 
-    
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          get(name: string) { return cookieStore.get(name)?.value; },
-          set(name, value, options) { cookieStore.set({ name, value, ...options }); },
-          remove(name, options) { cookieStore.delete({ name, ...options }); },
-        },
-      }
-    );
-    await supabase.auth.exchangeCodeForSession(code);
+    const supabase = await createClient();
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (!error) {
+      // ส่งกลับไปที่ origin (คือ URL ของ Vercel) + path (dashboard)
+      return NextResponse.redirect(`${origin}${next}`);
+    }
   }
 
-  // ส่งกลับไปที่หน้า dashboard
-  return NextResponse.redirect(`${origin}/dashboard`);
+  // หากมีปัญหา ให้กลับไปหน้า login
+  return NextResponse.redirect(`${origin}/login`);
 }
